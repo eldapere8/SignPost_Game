@@ -1,51 +1,79 @@
-# This makefile is defined to give you the following targets:
-#
-#    default: The default target: Compiles the program in package galaxy.
-#    style: Run our style checker on the project source files.  Requires that
-#           the source files compile.
-#    check: Compiles the db61b package, if needed, and then performs the
-#           tests described in testing/Makefile.
-#    clean: Remove regeneratable files (such as .class files) produced by
-#           other targets and Emacs backup files.
-#
-# In other words, type 'make' to compile everything; 'make check' to 
-# compile and test everything, and 'make clean' to clean things up.
-# 
-# You can use this file without understanding most of it, of course, but
-# I strongly recommend that you try to figure it out, and where you cannot,
-# that you ask questions.  The Lab Reader contains documentation.
+# This a Makefile, an input file for the GNU 'make' program.  For you 
+# command-line and Emacs enthusiasts, this makes it possible to build
+# this program with a single command:
+#     make 
+# You can also clean up junk files and .class files with
+#     make clean
+# To run style61b (our style enforcer) over your source files, type
+#     make style
+# Finally, you can run any tests you'd care to with
+#     make check
 
-# Name of package containing main procedure 
-PACKAGE = signpost
-
-PYTHON = python3
+SHELL = bash
 
 STYLEPROG = style61b
 
-# Targets that don't correspond to files, but are to be treated as commands.
-.PHONY: default check clean style unit integration
+PYTHON = python3
 
-default:
-	"$(MAKE)" -C $(PACKAGE) default
+PACKAGE = signpost
 
-check: default
-	code=0; \
-	"$(MAKE)" -C $(PACKAGE) PYTHON=$(PYTHON) unit || code=1; \
-	"$(MAKE)" -C testing PYTHON=$(PYTHON) check || code=1; \
-	exit $$code
+# A non-standard classpath that works on Linux, Mac, and Windows.
+# To Unix-like systems (Linux and Mac) it has the form
+#     <valid classpath>:<garbage classpath (ignored)>
+# while to Windows systems it looks like
+#     <garbage classpath (ignored)>;<valid classpath>
+CPATH = "..:$(CLASSPATH):;..;$(CLASSPATH)"
 
-unit: default
-	"$(MAKE)" -C $(PACKAGE) PYTHON=$(PYTHON) unit
+# Flags to pass to Java compilations (include debugging info and report
+# "unsafe" operations.)
+JFLAGS = -g -Xlint:unchecked -cp $(CPATH) -d .. -encoding utf8
 
-integration: default
-	"$(MAKE)" -C testing PYTHON=$(PYTHON) check
+CLASSDEST = ..
+
+# All .java files to be compiled.
+SRCS = $(wildcard *.java)
+
+CLASSES = $(SRCS:.java=.class)
+
+# Tell make that these are not really files.
+.PHONY: clean default compile style  \
+	check unit integration
+
+%.class: %.java
+	javac $(JFLAGS) -d "$(CLASSDEST)" $^ || { $(RM) $@; false; }
+
+# By default, make sure all classes are present and check if any sources have
+# changed since the last build.
+default: compile
+
+compile: Main.class
 
 style:
-	"$(MAKE)" -C $(PACKAGE) STYLEPROG=$(STYLEPROG) style
+	$(STYLEPROG) $(SRCS) 
 
-# 'make clean' will clean up stuff you can reconstruct.
+Main.class: $(SRCS)
+	javac $(JFLAGS) -d "$(CLASSDEST)" $(SRCS) || { $(RM) $@; false; }
+
+# Run Tests.
+check: 
+	code=0; \
+	"$(MAKE)" unit || code=1; \
+	"$(MAKE)" integration || code=1; \
+	exit $$code
+
+# Run unit tests in this directory
+unit: compile
+	cd ..; java -ea signpost.UnitTests
+
+integration: compile
+	"$(MAKE)" -C ../testing PYTHON=$(PYTHON) check
+
+unit-jar: unit-tests.jar
+
+unit-tests.jar: compile
+	jar cf $@ *Tests.class
+
+
+# Find and remove all *~ and *.class files.
 clean:
-	$(RM) *~
-	$(RM) bin/$(PACKAGE).jar
-	"$(MAKE)" -C $(PACKAGE) clean
-	"$(MAKE)" -C testing clean
+	$(RM) *.class *~ unit-tests.jar
